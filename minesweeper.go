@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math/rand/v2"
+	"slices"
 )
 
 type Vec2 struct {
@@ -10,12 +11,28 @@ type Vec2 struct {
 	y int
 }
 
-type Board struct {
-	board [][]int
-	size  Vec2
+func SetMine(startPos Vec2, boardSize Vec2, mineCount int) []int {
+	tileCount := boardSize.x * boardSize.y
+	array := make([]int, 0, tileCount)
+	dontTouch := CanSearchPos(startPos, boardSize, 1)
+	dontTouch = append(dontTouch, BoardVec2ToArrayVec2(startPos, boardSize.x))
+	for i := 0; i < mineCount; i++ {
+		if !slices.Contains(dontTouch, i) {
+			array = append(array, 1)
+		} else {
+			mineCount += 1
+			array = append(array, 0)
+		}
+	}
+	for i := mineCount; i < tileCount; i++ {
+		array = append(array, 0)
+	}
+	FisherYates(array, dontTouch)
+
+	return array
 }
 
-func CanSearchPos(pos Vec2, boardSize Vec2, size int) []Vec2 {
+func CanSearchPos(pos Vec2, boardSize Vec2, size int) []int {
 	init := Vec2{x: pos.x - size, y: pos.y - size}
 	if pos.x-size < 0 {
 		init.x = 0
@@ -23,54 +40,58 @@ func CanSearchPos(pos Vec2, boardSize Vec2, size int) []Vec2 {
 	if pos.y-size < 0 {
 		init.y = 0
 	}
-	var array []Vec2
+	var array []int
 	for y := init.y; y < boardSize.y && y <= pos.y+size; y++ {
 		for x := init.x; x < boardSize.x && x <= pos.x+size; x++ {
 			if x != pos.x || y != pos.y {
-				array = append(array, Vec2{x: x, y: y})
+				array = append(array, BoardVec2ToArrayVec2(Vec2{x: x, y: y}, boardSize.x))
 			}
 		}
 	}
 	return array
 }
 
-func FisherYates(startPos Vec2, array []int) {
-	for i := len(array) - 1; i > 0; i-- {
-		j := rand.N(i + 1)
-		array[j], array[i] = array[i], array[j]
+func Open(vec2 Vec2, gameBoard []int, mineBoard []int, boardSize Vec2) {
+	mineCount := 0
+	canSearchPos := CanSearchPos(vec2, boardSize, 1)
+	for _, v := range canSearchPos {
+		if mineBoard[v] == 1 {
+			mineCount += 1
+		}
+	}
+	gameBoard[BoardVec2ToArrayVec2(vec2, boardSize.x)] = mineCount
+	if mineCount == 0 {
+		for _, v := range canSearchPos {
+			if gameBoard[v] != 0 {
+				Open(ArrayVec2ToBoardVec2(v, boardSize.x), gameBoard, mineBoard, boardSize)
+			}
+		}
 	}
 }
 
-func SetMine(startPos Vec2, boardSize Vec2, mineCount int) []int {
-	tileCount := boardSize.x * boardSize.y
-	array := make([]int, 0, tileCount)
-	for i := 0; i < tileCount; i++ {
-		//지뢰 먼저 배치
-		if i < mineCount {
-			array = append(array, -2)
-		} else {
-			array = append(array, -1)
+func FisherYates(array []int, dontTouch []int) {
+	for i := len(array) - 1; i > 0; i-- {
+		j := rand.N(i + 1)
+		if !slices.Contains(dontTouch, i) && !slices.Contains(dontTouch, j) {
+			array[j], array[i] = array[i], array[j]
 		}
 	}
-	FisherYates(startPos, array)
-
-	return array
 }
 
 func BoardVec2ToArrayVec2(vec2 Vec2, xsize int) int {
 	return vec2.y*xsize + vec2.x
 }
 
-func Open(pos Vec2, board Board) {
-
+func ArrayVec2ToBoardVec2(len int, xsize int) Vec2 {
+	return Vec2{x: len % xsize, y: len / xsize}
 }
 
-func ArrayToBoard(array []int, size Vec2) Board {
-	board := Board{board: make([][]int, 0, size.y), size: size}
+func ArrayToBoard(array []int, size Vec2) [][]int {
+	board := make([][]int, 0, size.y)
 	for y := 0; y < size.y; y++ {
-		board.board = append(board.board, make([]int, 0, size.x))
+		board = append(board, make([]int, 0, size.x))
 		for x := 0; x < size.x; x++ {
-			board.board[y] = append(board.board[y], array[BoardVec2ToArrayVec2(Vec2{x: x, y: y}, size.x)])
+			board[y] = append(board[y], array[BoardVec2ToArrayVec2(Vec2{x: x, y: y}, size.x)])
 		}
 	}
 	return board
@@ -93,12 +114,13 @@ func main() {
 	var mineCount int = 100
 
 	var startPos Vec2 = Vec2{x: rand.N(boardSize.x), y: rand.N(boardSize.y)}
+	startPos = Vec2{x: 1, y: 1}
 	var array []int = SetMine(startPos, boardSize, mineCount)
-	var board Board = ArrayToBoard(array, boardSize)
+	var gameBoard []int = slices.Repeat([]int{-1}, boardSize.x*boardSize.y)
+	Open(startPos, gameBoard, array, boardSize)
 
-	Render2D(board.board)
-	fmt.Println(CanSearchPos(Vec2{x: 2, y: 2}, Vec2{x: 3, y: 3}, 1))
+	Render2D(ArrayToBoard(array, boardSize))
+	Render2D(ArrayToBoard(gameBoard, boardSize))
 }
 
-//TODO 시작 지점 인근 지뢰 매설 금지
 //TODO 렌더링만 2차원 나머지는 1차원으로 통일
