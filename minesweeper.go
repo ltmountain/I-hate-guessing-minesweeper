@@ -120,7 +120,7 @@ func CanOpenTiles(gameBoard []int, boardSize Vec2) []int {
 
 func Deduction(gameBoard []int, boardSize Vec2) {
 	// flags := make([]int, 0, boardSize.x*boardSize.y)
-	//opens := make([]int, 0, boardSize.x*boardSize.y)
+	opens := make([]int, 0, boardSize.x*boardSize.y)
 	for i, v := range gameBoard {
 		if v > 0 {
 			nearbyTilesOut := CanSearchPos(ArrayVec2ToBoardVec2(i, boardSize.x), boardSize, 2)
@@ -136,22 +136,34 @@ func Deduction(gameBoard []int, boardSize Vec2) {
 						flagTiles += 1
 					}
 				}
-				addedTempFlags := 0
+				addedTempFlags := make([]int, 0, 8)
 				for _, tileIndexIn := range nearbyTilesIn {
 					if gameBoard[tileIndexIn] == -1 {
 						gameBoard[tileIndexIn] = -3
-						addedTempFlags += 1
+						addedTempFlags = append(addedTempFlags, tileIndexIn)
 					}
 				}
-				nearbyTiles := CanSearchPos(ArrayVec2ToBoardVec2(i, boardSize.x), boardSize, 1)
-				countTempFlags := 0
-				for _, tileIndex := range nearbyTiles {
-					if gameBoard[tileIndex] == -3 {
-						countTempFlags += 1
+				if len(addedTempFlags) > 0 && gameBoard[tileIndexOut] == 1 {
+					nearbyTiles := CanSearchPos(ArrayVec2ToBoardVec2(i, boardSize.x), boardSize, 1)
+					countTempFlags := make([]int, 0, 8)
+					for _, tileIndex := range nearbyTiles {
+						if gameBoard[tileIndex] == -3 {
+							countTempFlags = append(countTempFlags, tileIndex)
+						}
 					}
-				}
-				if addedTempFlags == countTempFlags {
-					return
+					if slices.Equal(addedTempFlags, countTempFlags) {
+						nearbyClosedTiles := make([]int, 0, 8)
+						for _, tileIndex := range nearbyTiles {
+							if gameBoard[tileIndex] == -1 {
+								nearbyClosedTiles = append(nearbyClosedTiles, tileIndex)
+							}
+						}
+						if len(nearbyClosedTiles) == 1 && gameBoard[i] == 1 {
+							opens = append(opens, nearbyClosedTiles[0])
+						}
+						// fmt.Println(ArrayVec2ToBoardVec2(tileIndexOut, boardSize.x), ArrayVec2ToBoardVec2(i, boardSize.x))
+						// return
+					}
 				}
 				for _, tileIndexIn := range nearbyTilesIn {
 					if gameBoard[tileIndexIn] == -3 {
@@ -160,6 +172,9 @@ func Deduction(gameBoard []int, boardSize Vec2) {
 				}
 			}
 		}
+	}
+	for _, v := range opens {
+		gameBoard[v] = -9
 	}
 }
 
