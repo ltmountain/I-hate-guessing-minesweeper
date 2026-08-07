@@ -40,7 +40,7 @@ func CanSearchPos(pos Vec2, boardSize Vec2, size int) []int {
 	if pos.y-size < 0 {
 		init.y = 0
 	}
-	var array []int
+	array := make([]int, 0, size*size)
 	for y := init.y; y < boardSize.y && y <= pos.y+size; y++ {
 		for x := init.x; x < boardSize.x && x <= pos.x+size; x++ {
 			if x != pos.x || y != pos.y {
@@ -52,6 +52,9 @@ func CanSearchPos(pos Vec2, boardSize Vec2, size int) []int {
 }
 
 func Open(vec2 Vec2, gameBoard []int, mineBoard []int, boardSize Vec2) {
+	if mineBoard[BoardVec2ToArrayVec2(vec2, boardSize.x)] == 1 {
+		panic("boom")
+	}
 	mineCount := 0
 	canSearchPos := CanSearchPos(vec2, boardSize, 1)
 	for _, v := range canSearchPos {
@@ -65,6 +68,114 @@ func Open(vec2 Vec2, gameBoard []int, mineBoard []int, boardSize Vec2) {
 			if gameBoard[v] != 0 {
 				Open(ArrayVec2ToBoardVec2(v, boardSize.x), gameBoard, mineBoard, boardSize)
 			}
+		}
+	}
+}
+
+func CanSetFlags(gameBoard []int, boardSize Vec2) []int {
+	flags := make([]int, 0, boardSize.x*boardSize.y)
+	for i, v := range gameBoard {
+		if v > 0 {
+			closes := 0
+			nearbyTiles := CanSearchPos(ArrayVec2ToBoardVec2(i, boardSize.x), boardSize, 1)
+			for _, tileIndex := range nearbyTiles {
+				if gameBoard[tileIndex] == -1 || gameBoard[tileIndex] == -2 {
+					closes += 1
+				}
+			}
+			if closes == v {
+				for _, tileIndex := range nearbyTiles {
+					if gameBoard[tileIndex] == -1 {
+						flags = append(flags, tileIndex)
+					}
+				}
+			}
+		}
+	}
+	return flags
+}
+
+func CanOpenTiles(gameBoard []int, boardSize Vec2) []int {
+	opens := make([]int, 0, boardSize.x*boardSize.y)
+	for i, v := range gameBoard {
+		if v > 0 {
+			flags := 0
+			nearbyTiles := CanSearchPos(ArrayVec2ToBoardVec2(i, boardSize.x), boardSize, 1)
+			for _, tileIndex := range nearbyTiles {
+				if gameBoard[tileIndex] == -2 {
+					flags += 1
+				}
+			}
+			if flags == v {
+				for _, tileIndex := range nearbyTiles {
+					if gameBoard[tileIndex] == -1 {
+						opens = append(opens, tileIndex)
+					}
+				}
+			}
+		}
+	}
+	return opens
+}
+
+func Deduction(gameBoard []int, boardSize Vec2) {
+	// flags := make([]int, 0, boardSize.x*boardSize.y)
+	//opens := make([]int, 0, boardSize.x*boardSize.y)
+	for i, v := range gameBoard {
+		if v > 0 {
+			nearbyTilesOut := CanSearchPos(ArrayVec2ToBoardVec2(i, boardSize.x), boardSize, 2)
+			for _, tileIndexOut := range nearbyTilesOut {
+				nearbyTilesIn := CanSearchPos(ArrayVec2ToBoardVec2(tileIndexOut, boardSize.x), boardSize, 1)
+				nearbyClosedTilesIn := 0
+				flagTiles := 0
+				for _, tileIndexIn := range nearbyTilesIn {
+					switch gameBoard[tileIndexIn] {
+					case -1:
+						nearbyClosedTilesIn += 1
+					case -2:
+						flagTiles += 1
+					}
+				}
+				addedTempFlags := 0
+				for _, tileIndexIn := range nearbyTilesIn {
+					if gameBoard[tileIndexIn] == -1 {
+						gameBoard[tileIndexIn] = -3
+						addedTempFlags += 1
+					}
+				}
+				nearbyTiles := CanSearchPos(ArrayVec2ToBoardVec2(i, boardSize.x), boardSize, 1)
+				countTempFlags := 0
+				for _, tileIndex := range nearbyTiles {
+					if gameBoard[tileIndex] == -3 {
+						countTempFlags += 1
+					}
+				}
+				if addedTempFlags == countTempFlags {
+					return
+				}
+				for _, tileIndexIn := range nearbyTilesIn {
+					if gameBoard[tileIndexIn] == -3 {
+						gameBoard[tileIndexIn] = -1
+					}
+				}
+			}
+		}
+	}
+}
+
+func Solve(gameBoard []int, mineBoard []int, boardSize Vec2) {
+	for {
+		done := true
+		for _, tileindex := range CanSetFlags(gameBoard, boardSize) {
+			gameBoard[tileindex] = -2
+			done = false
+		}
+		for _, tileindex := range CanOpenTiles(gameBoard, boardSize) {
+			Open(ArrayVec2ToBoardVec2(tileindex, boardSize.x), gameBoard, mineBoard, boardSize)
+			done = false
+		}
+		if done {
+			break
 		}
 	}
 }
@@ -98,13 +209,22 @@ func ArrayToBoard(array []int, size Vec2) [][]int {
 }
 
 func Render2D(board [][]int) {
-	for _, v := range board {
-		fmt.Println(v)
+	for _, y := range board {
+		for _, x := range y {
+			if x < 0 {
+				fmt.Print(x)
+			} else {
+				fmt.Print(" ")
+				fmt.Print(x)
+			}
+		}
+		fmt.Print("\n")
 	}
 }
 
 /*
--2 = mine
+-3 = temp flag
+-2 = mine / flag
 -1 = closed
 0 = opend
 0 < nearby mine count
@@ -115,12 +235,16 @@ func main() {
 
 	var startPos Vec2 = Vec2{x: rand.N(boardSize.x), y: rand.N(boardSize.y)}
 	startPos = Vec2{x: 1, y: 1}
-	var array []int = SetMine(startPos, boardSize, mineCount)
+	var mineBoard []int = SetMine(startPos, boardSize, mineCount)
 	var gameBoard []int = slices.Repeat([]int{-1}, boardSize.x*boardSize.y)
-	Open(startPos, gameBoard, array, boardSize)
+	Open(startPos, gameBoard, mineBoard, boardSize)
 
-	Render2D(ArrayToBoard(array, boardSize))
+	Deduction(gameBoard, boardSize)
 	Render2D(ArrayToBoard(gameBoard, boardSize))
+	for _, v := range gameBoard {
+		if v == -1 {
+			fmt.Println("fail")
+			break
+		}
+	}
 }
-
-//TODO 렌더링만 2차원 나머지는 1차원으로 통일
