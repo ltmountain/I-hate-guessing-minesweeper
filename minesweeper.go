@@ -118,75 +118,94 @@ func CanOpenTiles(gameBoard []int, boardSize Vec2) []int {
 	return opens
 }
 
-func Deduction(gameBoard []int, boardSize Vec2) {
-	// flags := make([]int, 0, boardSize.x*boardSize.y)
+func Deduction(gameBoard []int, boardSize Vec2) ([]int, []int) {
+	flags := make([]int, 0, boardSize.x*boardSize.y)
 	opens := make([]int, 0, boardSize.x*boardSize.y)
 	for i, v := range gameBoard {
 		if v > 0 {
 			nearbyTilesOut := CanSearchPos(ArrayVec2ToBoardVec2(i, boardSize.x), boardSize, 2)
 			for _, tileIndexOut := range nearbyTilesOut {
-				nearbyTilesIn := CanSearchPos(ArrayVec2ToBoardVec2(tileIndexOut, boardSize.x), boardSize, 1)
-				nearbyClosedTilesIn := 0
-				flagTiles := 0
-				for _, tileIndexIn := range nearbyTilesIn {
-					switch gameBoard[tileIndexIn] {
-					case -1:
-						nearbyClosedTilesIn += 1
-					case -2:
-						flagTiles += 1
+				if gameBoard[tileIndexOut] > 0 {
+					nearbyTilesIn := CanSearchPos(ArrayVec2ToBoardVec2(tileIndexOut, boardSize.x), boardSize, 1)
+					nearbyClosedTilesIn := 0
+					countflagTilesOut := 0
+					for _, tileIndexIn := range nearbyTilesIn {
+						switch gameBoard[tileIndexIn] {
+						case -1:
+							nearbyClosedTilesIn += 1
+						case -2:
+							countflagTilesOut += 1
+						}
 					}
-				}
-				addedTempFlags := make([]int, 0, 8)
-				for _, tileIndexIn := range nearbyTilesIn {
-					if gameBoard[tileIndexIn] == -1 {
-						gameBoard[tileIndexIn] = -3
-						addedTempFlags = append(addedTempFlags, tileIndexIn)
+					addedTempFlags := make([]int, 0, 8)
+					for _, tileIndexIn := range nearbyTilesIn {
+						if gameBoard[tileIndexIn] == -1 {
+							gameBoard[tileIndexIn] = -3
+							addedTempFlags = append(addedTempFlags, tileIndexIn)
+						}
 					}
-				}
-				if len(addedTempFlags) > 0 && gameBoard[tileIndexOut] == 1 {
+
 					nearbyTiles := CanSearchPos(ArrayVec2ToBoardVec2(i, boardSize.x), boardSize, 1)
 					countTempFlags := make([]int, 0, 8)
+					nearbyClosedTiles := make([]int, 0, 8)
+					countflagTiles := 0
 					for _, tileIndex := range nearbyTiles {
-						if gameBoard[tileIndex] == -3 {
+						switch gameBoard[tileIndex] {
+						case -3:
 							countTempFlags = append(countTempFlags, tileIndex)
+						case -1:
+							nearbyClosedTiles = append(nearbyClosedTiles, tileIndex)
+						case -2:
+							countflagTiles += 1
 						}
 					}
-					if slices.Equal(addedTempFlags, countTempFlags) {
-						nearbyClosedTiles := make([]int, 0, 8)
-						for _, tileIndex := range nearbyTiles {
-							if gameBoard[tileIndex] == -1 {
-								nearbyClosedTiles = append(nearbyClosedTiles, tileIndex)
-							}
+
+					if slices.Equal(addedTempFlags, countTempFlags) && len(nearbyClosedTiles) > 0 && v-countflagTiles == gameBoard[tileIndexOut]-countflagTilesOut {
+						for _, nearbyClosedTile := range nearbyClosedTiles {
+							opens = append(opens, nearbyClosedTile)
 						}
-						if len(nearbyClosedTiles) == 1 && gameBoard[i] == 1 {
-							opens = append(opens, nearbyClosedTiles[0])
-						}
-						// fmt.Println(ArrayVec2ToBoardVec2(tileIndexOut, boardSize.x), ArrayVec2ToBoardVec2(i, boardSize.x))
-						// return
 					}
-				}
-				for _, tileIndexIn := range nearbyTilesIn {
-					if gameBoard[tileIndexIn] == -3 {
-						gameBoard[tileIndexIn] = -1
+					if len(countTempFlags) > 0 && len(nearbyClosedTiles) == (v-countflagTiles)-(gameBoard[tileIndexOut]-countflagTilesOut) {
+						for _, nearbyClosedTile := range nearbyClosedTiles {
+							flags = append(flags, nearbyClosedTile)
+						}
+					}
+					for _, tileIndexIn := range nearbyTilesIn {
+						if gameBoard[tileIndexIn] == -3 {
+							gameBoard[tileIndexIn] = -1
+						}
 					}
 				}
 			}
 		}
 	}
-	for _, v := range opens {
-		gameBoard[v] = -9
-	}
+	return flags, opens
 }
 
 func Solve(gameBoard []int, mineBoard []int, boardSize Vec2) {
 	for {
 		done := true
-		for _, tileindex := range CanSetFlags(gameBoard, boardSize) {
-			gameBoard[tileindex] = -2
+		for _, tileIndex := range CanSetFlags(gameBoard, boardSize) {
+			if mineBoard[tileIndex] != 1 {
+				panic("Something is wrong")
+			}
+			gameBoard[tileIndex] = -2
 			done = false
 		}
-		for _, tileindex := range CanOpenTiles(gameBoard, boardSize) {
-			Open(ArrayVec2ToBoardVec2(tileindex, boardSize.x), gameBoard, mineBoard, boardSize)
+		for _, tileIndex := range CanOpenTiles(gameBoard, boardSize) {
+			Open(ArrayVec2ToBoardVec2(tileIndex, boardSize.x), gameBoard, mineBoard, boardSize)
+			done = false
+		}
+		flags, opens := Deduction(gameBoard, boardSize)
+		for _, tileIndex := range flags {
+			if mineBoard[tileIndex] != 1 {
+				panic("Something is wrong")
+			}
+			gameBoard[tileIndex] = -2
+			done = false
+		}
+		for _, tileIndex := range opens {
+			Open(ArrayVec2ToBoardVec2(tileIndex, boardSize.x), gameBoard, mineBoard, boardSize)
 			done = false
 		}
 		if done {
@@ -245,6 +264,7 @@ func Render2D(board [][]int) {
 0 < nearby mine count
 */
 func main() {
+	fmt.Println("start")
 	var boardSize Vec2 = Vec2{x: 25, y: 25}
 	var mineCount int = 100
 
@@ -254,7 +274,7 @@ func main() {
 	var gameBoard []int = slices.Repeat([]int{-1}, boardSize.x*boardSize.y)
 	Open(startPos, gameBoard, mineBoard, boardSize)
 
-	Deduction(gameBoard, boardSize)
+	Solve(gameBoard, mineBoard, boardSize)
 	Render2D(ArrayToBoard(gameBoard, boardSize))
 	for _, v := range gameBoard {
 		if v == -1 {
